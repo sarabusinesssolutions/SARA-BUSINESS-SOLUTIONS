@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SARA Business Solutions | Login</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="login-wrapper">
+  <div class="login-card">
+    <div class="login-logo">SBS</div>
+    <h4 class="text-center mb-1">SARA Business Solutions</h4>
+    <p class="text-center text-muted mb-4">CRM &amp; Compliance Management System</p>
+
+    <form id="login-form">
+      <div class="mb-3">
+        <label class="form-label">Username</label>
+        <input type="text" class="form-control" id="login-username" required autofocus>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Password</label>
+        <input type="password" class="form-control" id="login-password" required>
+      </div>
+      <div id="login-error" class="alert alert-danger py-2 d-none"></div>
+      <button type="submit" class="btn btn-primary w-100" id="login-btn">
+        <i class="bi bi-box-arrow-in-right"></i> Login
+      </button>
+    </form>
+    <p class="text-center text-muted small mt-4 mb-0">Default: admin / Admin@123 (change after first login)</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/api.js"></script>
+<script>
+  if (Auth.isLoggedIn()) window.location.href = 'app.html';
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const errBox = document.getElementById('login-error');
+    errBox.classList.add('d-none');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Logging in...';
+    try {
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      const result = await Api.call({ action: 'login', username, password });
+      Auth.setSession(result.token, result.user, result.permissions);
+      window.location.href = 'app.html';
+    } catch (err) {
+      errBox.textContent = err.message || 'Login failed.';
+      errBox.classList.remove('d-none');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Login';
+    }
+  });
+</script>
+</body>
+</html>
