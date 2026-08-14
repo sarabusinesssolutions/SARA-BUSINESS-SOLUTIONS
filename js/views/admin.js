@@ -2,6 +2,11 @@
  * File: views/admin.js — Admin Controls
  * User management (create staff/manager/viewer logins),
  * role permission overview, and audit log viewer.
+ *
+ * "Add User" can link to an existing Employee record
+ * (fed live from Employee Management) to auto-fill name/
+ * email/phone. Role has NO default selection — SuperAdmin
+ * must explicitly pick the rights for every account.
  *******************************************************/
 async function renderAdminView(container) {
   if (!Auth.isAdmin()) {
@@ -39,7 +44,7 @@ async function renderAdminView(container) {
 
 async function renderUsersTab(holder) {
   holder.innerHTML = `<div class="empty-state"><div class="spinner-border text-primary"></div></div>`;
-  const users = await Api.list('Users');
+  const [users, employees] = await Promise.all([Api.list('Users'), Api.list('Employees')]);
   holder.innerHTML = `
     <div class="table-card">
       <div class="d-flex justify-content-end mb-2"><button class="btn btn-primary btn-sm" id="user-add-btn"><i class="bi bi-person-plus"></i> Add User</button></div>
@@ -56,9 +61,9 @@ async function renderUsersTab(holder) {
       )}
     </div>`;
 
-  document.getElementById('user-add-btn').addEventListener('click', () => openUserForm(null));
+  document.getElementById('user-add-btn').addEventListener('click', () => openUserForm(null, employees));
   holder.querySelectorAll('[data-edit-user]').forEach(btn => btn.addEventListener('click', () => {
-    openUserForm(users.find(u => u.UserID === btn.dataset.editUser));
+    openUserForm(users.find(u => u.UserID === btn.dataset.editUser), employees);
   }));
   holder.querySelectorAll('[data-del-user]').forEach(btn => btn.addEventListener('click', async () => {
     if (!UI.confirm('Delete this user account?')) return;
@@ -68,17 +73,32 @@ async function renderUsersTab(holder) {
   }));
 }
 
-function openUserForm(existing) {
+function openUserForm(existing, employees) {
+  employees = employees || [];
   const isEdit = !!existing;
   const v = existing || {};
   const body = `
     <form id="user-form">
       <div class="row">
+        <div class="mb-3 col-md-12">
+          <label class="form-label">Link Existing Employee (optional)</label>
+          <select class="form-select" id="user-employee-select">
+            <option value="">-- none / not linked to an employee record --</option>
+            ${employees.map(e => `<option value="${e.EmployeeID}">${Utils.escapeHtml(e.FullName)} — ${Utils.escapeHtml(e.Designation || '')}</option>`).join('')}
+          </select>
+          <div class="form-text">Pick a name added in Employee Management to auto-fill the fields below.</div>
+        </div>
         <div class="mb-3 col-md-6"><label class="form-label required">Full Name</label><input class="form-control" name="FullName" value="${Utils.escapeHtml(v.FullName)}" required></div>
         <div class="mb-3 col-md-6"><label class="form-label required">Username</label><input class="form-control" name="Username" value="${Utils.escapeHtml(v.Username)}" required ${isEdit ? 'readonly' : ''}></div>
         <div class="mb-3 col-md-6"><label class="form-label ${isEdit ? '' : 'required'}">Password ${isEdit ? '(leave blank to keep current)' : ''}</label><input type="password" class="form-control" name="Password" ${isEdit ? '' : 'required'}></div>
-        <div class="mb-3 col-md-6"><label class="form-label required">Role</label>
-          <select class="form-select" name="Role" required>${CONFIG.ROLES.map(r => `<option ${r === v.Role ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+        <div class="mb-3 col-md-6">
+          <label class="form-label required">Role / Rights</label>
+          <select class="form-select" name="Role" required>
+            <option value="" ${!v.Role ? 'selected' : ''} disabled>-- select rights for this user --</option>
+            ${CONFIG.ROLES.map(r => `<option value="${r}" ${r === v.Role ? 'selected' : ''}>${r}</option>`).join('')}
+          </select>
+          <div class="form-text">No default is chosen — pick the exact access level for this person.</div>
+        </div>
         <div class="mb-3 col-md-6"><label class="form-label">Email</label><input type="email" class="form-control" name="Email" value="${Utils.escapeHtml(v.Email)}"></div>
         <div class="mb-3 col-md-6"><label class="form-label">Phone</label><input class="form-control" name="Phone" value="${Utils.escapeHtml(v.Phone)}"></div>
         <div class="mb-3 col-md-6"><label class="form-label">Status</label>
@@ -88,9 +108,22 @@ function openUserForm(existing) {
   const footer = `<button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" id="user-save-btn">${isEdit ? 'Update' : 'Create'}</button>`;
   UI.openModal('userModal', `${isEdit ? 'Edit' : 'Add'} User`, body, footer);
 
+  const form = document.getElementById('user-form');
+  document.getElementById('user-employee-select').addEventListener('change', (e) => {
+    const emp = employees.find(x => x.EmployeeID === e.target.value);
+    if (emp) {
+      form.FullName.value = emp.FullName || '';
+      form.Email.value = emp.Email || '';
+      form.Phone.value = emp.Phone || '';
+    }
+  });
+
   document.getElementById('user-save-btn').addEventListener('click', async () => {
-    const form = document.getElementById('user-form');
-    if (!form.checkValidity()) { form.reportValidity(); return; }
+    if (!form.checkValidity() || !form.Role.value) {
+      form.reportValidity();
+      if (!form.Role.value) UI.toast('Please select a role/rights level for this user.', 'danger');
+      return;
+    }
     const data = {
       FullName: form.FullName.value, Username: form.Username.value, Role: form.Role.value,
       Email: form.Email.value, Phone: form.Phone.value, Status: form.Status.value
