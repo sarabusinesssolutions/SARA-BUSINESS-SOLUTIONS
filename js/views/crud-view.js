@@ -116,15 +116,37 @@ async function renderCrudView(container, config) {
       <button class="btn btn-primary" id="crud-save-btn">${isEdit ? 'Update' : 'Save'}</button>`;
     UI.openModal('crudModal', `${isEdit ? 'Edit' : 'Add'} ${config.singular}`, bodyHtml, footerHtml);
 
+    // Wire up "related-select" fields (e.g. Customer/Service/Employee pickers)
+    // so choosing an option auto-fills other fields in the same form.
+    const formEl = document.getElementById('crud-form');
+    config.formFields.filter(f => f.type === 'related-select' && f.onSelectFill).forEach(f => {
+      const el = formEl.querySelector(`[name="${f.name}"]`);
+      if (!el) return;
+      el.addEventListener('change', () => {
+        const record = (f.relatedData || []).find(r => String(f.optionValue(r)) === el.value);
+        Object.keys(f.onSelectFill).forEach(targetName => {
+          const targetEl = formEl.querySelector(`[name="${targetName}"]`);
+          if (targetEl) targetEl.value = record ? (f.onSelectFill[targetName](record) ?? '') : '';
+        });
+      });
+    });
+
     document.getElementById('crud-save-btn').addEventListener('click', async () => {
       const form = document.getElementById('crud-form');
       const data = {};
       let valid = true;
       config.formFields.forEach(f => {
         const el = form.querySelector(`[name="${f.name}"]`);
-        const val = el ? el.value : '';
-        if (f.required && !val) { el.classList.add('is-invalid'); valid = false; }
-        else if (el) el.classList.remove('is-invalid');
+        if (!el) { data[f.name] = f.default ?? ''; return; }
+        const val = f.type === 'multi-select'
+          ? Array.from(el.selectedOptions).map(o => o.value).join(', ')
+          : el.value;
+        if (f.required && !val) {
+          if (el.classList) el.classList.add('is-invalid');
+          valid = false;
+        } else if (el.classList) {
+          el.classList.remove('is-invalid');
+        }
         data[f.name] = val;
       });
       if (!valid) { UI.toast('Please fill all required fields.', 'danger'); return; }
@@ -147,14 +169,42 @@ async function renderCrudView(container, config) {
 
   function fieldHtml(f, existing) {
     const value = existing ? (existing[f.name] ?? '') : (f.default ?? '');
+
+    // Hidden fields (used to auto-carry a related record's name/price etc.)
+    // render with no label/wrapper so they stay invisible in the form.
+    if (f.type === 'hidden') {
+      return `<input type="hidden" name="${f.name}" value="${Utils.escapeHtml(value)}">`;
+    }
+
     const req = f.required ? 'required' : '';
     const labelCls = f.required ? 'form-label required' : 'form-label';
     let input;
+
     if (f.type === 'select') {
       input = `<select class="form-select" name="${f.name}" ${req}>
         <option value="">-- select --</option>
         ${f.options.map(o => `<option value="${o}" ${o === value ? 'selected' : ''}>${o}</option>`).join('')}
       </select>`;
+    } else if (f.type === 'related-select') {
+      // Dropdown populated live from another module's records
+      // (e.g. Customers, Services, Employees) instead of free text.
+      input = `<select class="form-select" name="${f.name}" ${req}>
+        <option value="">-- select ${(f.label || '').toLowerCase()} --</option>
+        ${(f.relatedData || []).map(r => {
+          const val = f.optionValue(r);
+          const label = f.optionLabel(r);
+          const sel = String(val) === String(value) ? 'selected' : '';
+          return `<option value="${Utils.escapeHtml(val)}" ${sel}>${Utils.escapeHtml(label)}</option>`;
+        }).join('')}
+      </select>`;
+      if (!f.relatedData || !f.relatedData.length) {
+        input += `<div class="form-text text-danger">No records found — add one first.</div>`;
+      }
+    } else if (f.type === 'multi-select') {
+      const selectedList = String(value || '').split(',').map(s => s.trim()).filter(Boolean);
+      input = `<select class="form-select" name="${f.name}" multiple size="5">
+        ${(f.options || []).map(o => `<option value="${o}" ${selectedList.includes(o) ? 'selected' : ''}>${o}</option>`).join('')}
+      </select><div class="form-text">Hold Ctrl (Cmd on Mac) to select multiple.</div>`;
     } else if (f.type === 'textarea') {
       input = `<textarea class="form-control" name="${f.name}" rows="3" ${req}>${Utils.escapeHtml(value)}</textarea>`;
     } else {
