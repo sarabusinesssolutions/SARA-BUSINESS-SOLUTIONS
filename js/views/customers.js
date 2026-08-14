@@ -1,10 +1,16 @@
 /*******************************************************
  * File: views/customers.js — Customer Management
- * Complete customer profiles, service history, payment
- * details. (Documents & communication live in their own
- * linked modules: Documents, FollowUps, Invoices.)
+ * "Services Availed" is a multi-select fed live from the
+ * Services module instead of free text, so any service
+ * you add there is immediately selectable here.
  *******************************************************/
-function renderCustomersView(container) {
+async function renderCustomersView(container) {
+  container.innerHTML = `<div class="empty-state"><div class="spinner-border text-primary"></div></div>`;
+
+  let services = [];
+  try { services = await Api.list('Services'); } catch (e) { /* toast already shown */ }
+  const serviceNames = services.map(s => s.ServiceName);
+
   renderCrudView(container, {
     module: 'Customers',
     title: 'Customer Management',
@@ -30,7 +36,7 @@ function renderCustomersView(container) {
       { name: 'Address', label: 'Address', type: 'textarea', col: 12 },
       { name: 'GSTNumber', label: 'GST Number', col: 6 },
       { name: 'PANNumber', label: 'PAN Number', col: 6 },
-      { name: 'ServicesAvailed', label: 'Services Availed', col: 12 },
+      { name: 'ServicesAvailed', label: 'Services Availed', type: 'multi-select', options: serviceNames, col: 12 },
       { name: 'TotalPaid', label: 'Total Paid (₹)', type: 'number', col: 6 },
       { name: 'TotalDue', label: 'Total Due (₹)', type: 'number', col: 6 },
       { name: 'Status', label: 'Status', type: 'select', options: ['Active', 'Inactive'], required: true, col: 6 },
