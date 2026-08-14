@@ -1,7 +1,23 @@
 /*******************************************************
  * File: views/invoices.js — Invoice Management
+ * Customer and Service are picked from live dropdowns
+ * (fed by the Customers and Services sheets) instead of
+ * free text, so new customers/services show up here
+ * automatically as soon as they're created.
  *******************************************************/
-function renderInvoicesView(container) {
+async function renderInvoicesView(container) {
+  container.innerHTML = `<div class="empty-state"><div class="spinner-border text-primary"></div></div>`;
+
+  let customers = [], services = [];
+  try {
+    [customers, services] = await Promise.all([Api.list('Customers'), Api.list('Services')]);
+  } catch (e) {
+    // Api.call already shows a toast on failure
+  }
+
+  if (!customers.length) UI.toast('No customers found yet — add a customer first so invoices can be linked to one.', 'warning');
+  if (!services.length) UI.toast('No services found yet — add a service first so invoices can be linked to one.', 'warning');
+
   renderCrudView(container, {
     module: 'Invoices',
     title: 'Invoice Management',
@@ -21,10 +37,22 @@ function renderInvoicesView(container) {
       { field: 'InvoiceDate', label: 'Date' }
     ],
     formFields: [
-      { name: 'CustomerID', label: 'Customer ID', required: true, col: 6 },
-      { name: 'CustomerName', label: 'Customer Name', required: true, col: 6 },
-      { name: 'ServiceID', label: 'Service ID', col: 6 },
-      { name: 'ServiceName', label: 'Service Name', required: true, col: 6 },
+      {
+        name: 'CustomerID', label: 'Customer', type: 'related-select', required: true, col: 6,
+        relatedData: customers,
+        optionValue: c => c.CustomerID,
+        optionLabel: c => `${c.Name}${c.CompanyName ? ' — ' + c.CompanyName : ''} (${c.Phone})`,
+        onSelectFill: { CustomerName: c => c.Name }
+      },
+      { name: 'CustomerName', type: 'hidden' },
+      {
+        name: 'ServiceID', label: 'Service', type: 'related-select', required: true, col: 6,
+        relatedData: services,
+        optionValue: s => s.ServiceID,
+        optionLabel: s => `${s.ServiceName} (${s.Category})`,
+        onSelectFill: { ServiceName: s => s.ServiceName, Amount: s => s.Price || '' }
+      },
+      { name: 'ServiceName', type: 'hidden' },
       { name: 'Amount', label: 'Amount (₹)', type: 'number', required: true, col: 4 },
       { name: 'TaxAmount', label: 'Tax Amount (₹)', type: 'number', default: 0, col: 4 },
       { name: 'PaidAmount', label: 'Paid Amount (₹)', type: 'number', default: 0, col: 4 },
@@ -46,3 +74,4 @@ function renderInvoicesView(container) {
     }
   });
 }
+
